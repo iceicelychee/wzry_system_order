@@ -3,7 +3,14 @@ import { ElMessage } from 'element-plus'
 
 // 走 Vite 代理，BASE_URL 留空即可
 const BASE_URL = ''
-const API_SERVER = 'http://localhost:8000'
+
+// 图片使用相对路径，通过 Nginx 代理访问
+// WebSocket URL 根据当前页面协议自动选择
+const getWsHost = () => {
+  const host = window.location.host
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+  return `${protocol}//${host}`
+}
 
 // 管理员 HTTP 实例
 const http = axios.create({
@@ -140,11 +147,12 @@ export const agentApi = {
 export const getImageUrl = (path) => {
   if (!path) return ''
   if (path.startsWith('http')) return path
-  return `${API_SERVER}${path}`
+  // 使用相对路径，通过 Nginx 代理访问
+  return path.startsWith('/') ? path : `/${path}`
 }
 
 export const getWsUrl = (token) => {
-  return `ws://localhost:8000/api/callback/ws/${token}`
+  return `${getWsHost()}/api/callback/ws/${token}`
 }
 
 export default http
