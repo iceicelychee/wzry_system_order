@@ -51,6 +51,8 @@ class Settings(BaseSettings):
             self.DB_POOL_RECYCLE = int(os.getenv("DB_POOL_RECYCLE"))
         if os.getenv("ENABLE_DOCS"):
             self.ENABLE_DOCS = os.getenv("ENABLE_DOCS", "true").lower() == "true"
+        if os.getenv("FRONTEND_URL"):
+            self.FRONTEND_URL = os.getenv("FRONTEND_URL")
     
     @property
     def cors_origins_list(self) -> List[str]:
