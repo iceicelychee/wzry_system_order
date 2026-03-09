@@ -17,16 +17,28 @@
             </el-select>
             <el-input v-model="filter.keyword" placeholder="搜索图片名称/标签" clearable style="width:220px;margin-left:8px"
               prefix-icon="Search" @keyup.enter="loadImages" />
+            <el-button v-if="selectedImages.length > 0" type="danger" icon="Delete" style="margin-left:auto"
+              @click="showBatchDelete = true">
+              批量删除({{ selectedImages.length }})
+            </el-button>
+            <el-button v-if="selectedImages.length > 0" type="primary" icon="Folder" style="margin-left:8px"
+              @click="showBatchCategory = true">
+              批量分类({{ selectedImages.length }})
+            </el-button>
           </div>
           <div class="image-grid" v-loading="loading">
-            <div v-for="img in images" :key="img.id" class="image-item">
+            <div v-for="img in images" :key="img.id" class="image-item" :class="{ selected: isSelected(img.id) }"
+              @click="toggleSelect(img)">
+              <div class="image-checkbox">
+                <el-checkbox :model-value="isSelected(img.id)" @click.stop />
+              </div>
               <el-image :src="getImageUrl(img.image_url)" fit="cover"
-                :preview-src-list="[getImageUrl(img.image_url)]" style="width:100%;height:120px" />
+                :preview-src-list="[getImageUrl(img.image_url)]" style="width:100%;height:120px" @click.stop />
               <div class="image-info">
                 <span class="image-name">{{ img.name }}</span>
-                <el-popconfirm title="确认删除该图片？" @confirm="handleDelete(img)">
+                <el-popconfirm title="确认删除该图片？" @confirm="handleDelete(img)" @click.stop>
                   <template #reference>
-                    <el-button type="danger" link size="small" icon="Delete" />
+                    <el-button type="danger" link size="small" icon="Delete" @click.stop />
                   </template>
                 </el-popconfirm>
               </div>
@@ -102,6 +114,31 @@
         <el-button type="primary" @click="handleAddCategory">确认</el-button>
       </template>
     </el-dialog>
+
+    <!-- 批量删除确认弹窗 -->
+    <el-dialog v-model="showBatchDelete" title="批量删除" width="340px">
+      <p>确认删除选中的 {{ selectedImages.length }} 张图片？</p>
+      <p style="color:#f56c6c;font-size:12px;margin-top:8px">此操作不可恢复</p>
+      <template #footer>
+        <el-button @click="showBatchDelete = false">取消</el-button>
+        <el-button type="danger" :loading="batchDeleting" @click="handleBatchDelete">确认删除</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 批量分类弹窗 -->
+    <el-dialog v-model="showBatchCategory" title="批量设置分类" width="340px">
+      <el-form label-width="80px">
+        <el-form-item label="选择分类">
+          <el-select v-model="batchCategoryId" placeholder="选择分类（取消分类则留空）" clearable style="width:100%">
+            <el-option v-for="c in categories" :key="c.id" :label="c.name" :value="c.id" />
+          </el-select>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="showBatchCategory = false">取消</el-button>
+        <el-button type="primary" :loading="batchCategorizing" @click="handleBatchCategory">确认</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -124,6 +161,54 @@ const uploadPreview = ref('')
 
 const showAddCategory = ref(false)
 const newCategoryName = ref('')
+
+// 批量操作
+const selectedImages = ref([])
+const showBatchDelete = ref(false)
+const batchDeleting = ref(false)
+const showBatchCategory = ref(false)
+const batchCategoryId = ref(null)
+const batchCategorizing = ref(false)
+
+function isSelected(id) {
+  return selectedImages.value.includes(id)
+}
+
+function toggleSelect(img) {
+  const index = selectedImages.value.indexOf(img.id)
+  if (index > -1) {
+    selectedImages.value.splice(index, 1)
+  } else {
+    selectedImages.value.push(img.id)
+  }
+}
+
+async function handleBatchDelete() {
+  batchDeleting.value = true
+  try {
+    await galleryApi.batchDelete(selectedImages.value)
+    ElMessage.success(`已删除 ${selectedImages.value.length} 张图片`)
+    selectedImages.value = []
+    showBatchDelete.value = false
+    loadImages()
+  } finally {
+    batchDeleting.value = false
+  }
+}
+
+async function handleBatchCategory() {
+  batchCategorizing.value = true
+  try {
+    await galleryApi.batchCategory(selectedImages.value, batchCategoryId.value)
+    ElMessage.success(`已更新 ${selectedImages.value.length} 张图片的分类`)
+    selectedImages.value = []
+    batchCategoryId.value = null
+    showBatchCategory.value = false
+    loadImages()
+  } finally {
+    batchCategorizing.value = false
+  }
+}
 
 async function loadImages() {
   loading.value = true
@@ -216,4 +301,18 @@ onMounted(() => {
 }
 .image-name { font-size: 12px; color: #606266; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100px; }
 .pagination { display: flex; justify-content: flex-end; margin-top: 16px; }
+
+/* 批量选择样式 */
+.image-item { position: relative; cursor: pointer; transition: all 0.2s; }
+.image-item:hover { box-shadow: 0 2px 12px rgba(0,0,0,0.1); }
+.image-item.selected { border-color: #409eff; box-shadow: 0 0 0 2px #409eff; }
+.image-checkbox {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  z-index: 10;
+  background: rgba(255,255,255,0.9);
+  border-radius: 4px;
+  padding: 2px;
+}
 </style>

@@ -100,6 +100,8 @@ export const galleryApi = {
   list: (params) => http.get('/api/gallery/list', { params }),
   upload: (formData) => http.post('/api/gallery/upload', formData),
   delete: (id) => http.delete(`/api/gallery/delete/${id}`),
+  batchDelete: (ids) => http.post('/api/gallery/batch-delete', { ids }),
+  batchCategory: (ids, categoryId) => http.post('/api/gallery/batch-category', { ids, category_id: categoryId }),
 }
 
 export const clientApi = {

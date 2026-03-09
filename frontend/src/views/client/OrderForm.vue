@@ -17,11 +17,10 @@
         <p style="color:#f56c6c;margin-top:12px">{{ errorMsg }}</p>
       </div>
 
-      <!-- 已提交 -->
+      <!-- 已提交 - 自动跳转状态页面 -->
       <div v-else-if="alreadySubmitted" class="center-box">
         <el-icon style="font-size:48px;color:#67c23a"><CircleCheck /></el-icon>
-        <p style="color:#67c23a;margin-top:12px">该订单已提交，请等待处理</p>
-        <el-button type="primary" style="margin-top:16px" @click="goStatus">查看执行状态</el-button>
+        <p style="color:#67c23a;margin-top:12px">该订单已提交，正在跳转...</p>
       </div>
 
       <!-- 填写表单 -->
@@ -175,6 +174,11 @@ onMounted(async () => {
     const res = await clientApi.getOrder(token)
     orderNo.value = res.order_no
     alreadySubmitted.value = res.already_submitted
+    // 已提交订单直接跳转到状态页面
+    if (res.already_submitted) {
+      router.push(`/order/${token}/status`)
+      return
+    }
     if (res.system_type) form.system_type = res.system_type
   } catch (e) {
     errorMsg.value = e.response?.data?.detail || '链接无效或已失效'

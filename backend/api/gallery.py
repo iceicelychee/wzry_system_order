@@ -138,3 +138,47 @@ def delete_gallery_image(
     db.add(OperationLog(admin_id=current_admin.id, action="删除图库图片", target=img.name))
     db.commit()
     return {"message": "图片已删除"}
+
+
+class BatchDeleteRequest(BaseModel):
+    ids: list[int]
+
+
+@router.post("/batch-delete")
+def batch_delete_gallery_images(
+    req: BatchDeleteRequest,
+    current_admin=Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    images = db.query(Gallery).filter(Gallery.id.in_(req.ids)).all()
+    deleted_count = 0
+    for img in images:
+        if img.image_path and os.path.exists(img.image_path):
+            os.remove(img.image_path)
+        db.delete(img)
+        deleted_count += 1
+    if deleted_count > 0:
+        db.add(OperationLog(admin_id=current_admin.id, action="批量删除图库图片", target=f"共{deleted_count}张"))
+    db.commit()
+    return {"message": f"已删除 {deleted_count} 张图片"}
+
+
+class BatchCategoryRequest(BaseModel):
+    ids: list[int]
+    category_id: Optional[int] = None
+
+
+@router.post("/batch-category")
+def batch_set_gallery_category(
+    req: BatchCategoryRequest,
+    current_admin=Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    if req.category_id:
+        cat = db.query(GalleryCategory).filter(GalleryCategory.id == req.category_id).first()
+        if not cat:
+            raise HTTPException(status_code=404, detail="分类不存在")
+    updated = db.query(Gallery).filter(Gallery.id.in_(req.ids)).update({"category_id": req.category_id})
+    db.add(OperationLog(admin_id=current_admin.id, action="批量设置图片分类", target=f"共{updated}张"))
+    db.commit()
+    return {"message": f"已更新 {updated} 张图片的分类"}
