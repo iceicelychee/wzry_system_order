@@ -17,14 +17,19 @@
         <p style="color:#f56c6c;margin-top:12px">{{ errorMsg }}</p>
       </div>
 
-      <!-- 已提交 - 自动跳转状态页面 -->
-      <div v-else-if="alreadySubmitted" class="center-box">
+      <!-- 已提交且执行中/已完成 - 跳转状态页 -->
+      <div v-else-if="alreadySubmitted && execStarted" class="center-box">
         <el-icon style="font-size:48px;color:#67c23a"><CircleCheck /></el-icon>
-        <p style="color:#67c23a;margin-top:12px">该订单已提交，正在跳转...</p>
+        <p style="color:#67c23a;margin-top:12px">该订单正在处理中，正在跳转...</p>
       </div>
 
-      <!-- 填写表单 -->
+      <!-- 填写表单（未提交 或 已提交但未开始执行） -->
       <div v-else>
+        <!-- 已提交但未执行时显示提示 -->
+        <el-alert v-if="alreadySubmitted && !execStarted" type="warning" show-icon :closable="false"
+          style="margin-bottom:20px">
+          <template #title>订单已提交，尚未开始执行，可重新修改提交内容</template>
+        </el-alert>
         <el-descriptions :column="1" border style="margin-bottom:24px">
           <el-descriptions-item label="订单编号">
             <strong>{{ orderNo }}</strong>
@@ -141,6 +146,7 @@ const token = route.params.token
 const pageLoading = ref(true)
 const errorMsg = ref('')
 const alreadySubmitted = ref(false)
+const execStarted = ref(false) // 是否已进入执行中/成功/失败
 const orderNo = ref('')
 const submitting = ref(false)
 const formRef = ref()
@@ -174,8 +180,11 @@ onMounted(async () => {
     const res = await clientApi.getOrder(token)
     orderNo.value = res.order_no
     alreadySubmitted.value = res.already_submitted
-    // 已提交订单直接跳转到状态页面
-    if (res.already_submitted) {
+    // 判断是否已开始执行（执行中/成功/失败不可修改）
+    const startedStatuses = ['执行中', '成功', '失败']
+    execStarted.value = startedStatuses.includes(res.exec_status)
+    // 已提交且已开始执行，直接跳转状态页
+    if (res.already_submitted && execStarted.value) {
       router.push(`/order/${token}/status`)
       return
     }
