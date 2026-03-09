@@ -20,6 +20,10 @@
           <el-icon><User /></el-icon>
           <span>代理管理</span>
         </el-menu-item>
+        <el-menu-item index="/admin/settings">
+          <el-icon><Setting /></el-icon>
+          <span>站点设置</span>
+        </el-menu-item>
       </el-menu>
     </el-aside>
     <el-container>
@@ -75,6 +79,7 @@ const pageTitle = computed(() => {
     '/admin/orders/create': '创建订单',
     '/admin/gallery': '图库管理',
     '/admin/agents': '代理管理',
+    '/admin/settings': '站点设置',
   }
   if (route.path.startsWith('/admin/agents/') && route.path !== '/admin/agents') {
     return '代理详情'

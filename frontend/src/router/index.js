@@ -46,6 +46,11 @@ const routes = [
         name: 'AgentDetail',
         component: () => import('../views/admin/AgentDetail.vue'),
       },
+      {
+        path: 'settings',
+        name: 'Settings',
+        component: () => import('../views/admin/Settings.vue'),
+      },
     ],
   },
   // 代理路由

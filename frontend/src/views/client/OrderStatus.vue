@@ -17,7 +17,11 @@
       <!-- 等待启动 -->
       <div v-if="execStatus === '待执行'" class="state-box">
         <el-icon class="spin-icon"><Loading /></el-icon>
-        <p class="state-text">正在准备脚本，请稍候...</p>
+        <p class="state-text">正在分配设备，请准备好扫码授权我们上号修改</p>
+        <p class="timeout-hint" v-if="timeoutCountdown > 0">
+          <el-icon><Warning /></el-icon>
+          若 {{ timeoutCountdown }} 秒内无响应将自动返回重新提交
+        </p>
       </div>
 
       <!-- 二维码扫码 -->
@@ -55,16 +59,23 @@
         <p class="state-text error">执行失败</p>
         <p v-if="errorText" class="error-text">{{ errorText }}</p>
       </div>
+
+      <!-- 底部说明 -->
+      <div v-if="noticeContent" class="notice-box">
+        <div class="notice-title">说明</div>
+        <div class="notice-content" v-html="noticeHtml"></div>
+      </div>
     </div>
   </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { useRoute } from 'vue-router'
-import { clientApi, getImageUrl, getWsUrl } from '../../api'
+import { useRoute, useRouter } from 'vue-router'
+import { clientApi, authApi, getImageUrl, getWsUrl } from '../../api'
 
 const route = useRoute()
+const router = useRouter()
 const token = route.params.token
 
 const orderNo = ref('')
@@ -75,10 +86,18 @@ const qrcodeExpiredAt = ref(null)
 const countdown = ref(0)
 const resultText = ref('')
 const errorText = ref('')
+const noticeContent = ref('')
+const timeoutCountdown = ref(180) // 3分钟超时倒计时
+
+const noticeHtml = computed(() => {
+  return noticeContent.value.replace(/\n/g, '<br>')
+})
 
 let ws = null
 let pollTimer = null
 let countdownTimer = null
+let timeoutTimer = null // 超时计时器
+let hasReceivedCallback = ref(false) // 是否收到过回调
 
 const showQrcode = computed(() => !!qrcodeUrl.value)
 
@@ -108,7 +127,34 @@ function startCountdown() {
   }, 1000)
 }
 
+// 启动超时计时器（3分钟无回调自动返回）
+function startTimeoutTimer() {
+  if (timeoutTimer) clearInterval(timeoutTimer)
+  timeoutCountdown.value = 180
+  timeoutTimer = setInterval(() => {
+    timeoutCountdown.value--
+    if (timeoutCountdown.value <= 0) {
+      clearInterval(timeoutTimer)
+      // 跳转回订单提交页
+      router.replace(`/order/${token}`)
+    }
+  }, 1000)
+}
+
+// 收到回调时重置超时计时器
+function resetTimeoutTimer() {
+  if (!hasReceivedCallback.value) {
+    hasReceivedCallback.value = true
+    if (timeoutTimer) clearInterval(timeoutTimer)
+    timeoutCountdown.value = 0
+  }
+}
+
 function applyStatus(data) {
+  // 收到任何状态更新，重置超时计时器
+  if (data.exec_status || data.qrcode_url || data.qrcode_status) {
+    resetTimeoutTimer()
+  }
   if (data.exec_status) execStatus.value = data.exec_status
   if (data.qrcode_url) qrcodeUrl.value = getImageUrl(data.qrcode_url)
   if (data.qrcode_status) qrcodeStatus.value = data.qrcode_status
@@ -120,6 +166,8 @@ function applyStatus(data) {
 function connectWebSocket() {
   ws = new WebSocket(getWsUrl(token))
   ws.onmessage = (e) => {
+    // 收到WebSocket消息，重置超时
+    resetTimeoutTimer()
     const msg = JSON.parse(e.data)
     if (msg.type === 'qrcode') {
       execStatus.value = '执行中'
@@ -161,6 +209,9 @@ function startPolling() {
 }
 
 onMounted(async () => {
+  // 启动超时计时器
+  startTimeoutTimer()
+
   try {
     const info = await clientApi.getOrder(token)
     orderNo.value = info.order_no
@@ -171,6 +222,11 @@ onMounted(async () => {
     applyStatus(data)
   } catch { }
 
+  try {
+    const res = await authApi.getSiteConfig('order_status_notice')
+    if (res.value) noticeContent.value = res.value
+  } catch { }
+
   connectWebSocket()
 })
 
@@ -178,6 +234,7 @@ onUnmounted(() => {
   if (ws) ws.close()
   if (pollTimer) clearInterval(pollTimer)
   if (countdownTimer) clearInterval(countdownTimer)
+  if (timeoutTimer) clearInterval(timeoutTimer)
 })
 </script>
 
@@ -207,6 +264,15 @@ onUnmounted(() => {
 .state-text { font-size: 16px; color: #606266; margin-top: 16px; }
 .state-text.success { color: #67c23a; font-weight: 600; }
 .state-text.error { color: #f56c6c; font-weight: 600; }
+.timeout-hint {
+  margin-top: 16px;
+  font-size: 13px;
+  color: #e6a23c;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
 .state-label { font-size: 15px; color: #303133; font-weight: 500; margin-bottom: 16px; }
 .qrcode-wrap { position: relative; display: inline-block; margin: 0 auto; }
 .qrcode-expired {
@@ -220,4 +286,22 @@ onUnmounted(() => {
 .expired-hint { color: #e6a23c; font-size: 13px; margin-top: 6px; }
 .result-text { color: #606266; font-size: 14px; margin-top: 8px; }
 .error-text { color: #f56c6c; font-size: 13px; margin-top: 8px; background: #fef0f0; padding: 8px 12px; border-radius: 6px; }
+.notice-box {
+  margin-top: 24px;
+  padding: 16px;
+  background: #f4f4f5;
+  border-radius: 8px;
+  border-left: 4px solid #409eff;
+}
+.notice-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #303133;
+  margin-bottom: 8px;
+}
+.notice-content {
+  font-size: 13px;
+  color: #606266;
+  line-height: 1.8;
+}
 </style>

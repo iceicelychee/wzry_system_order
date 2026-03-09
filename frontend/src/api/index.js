@@ -76,6 +76,9 @@ export const authApi = {
   changePassword: (data) => http.post('/api/auth/change-password', data),
   // 代理登录
   agentLogin: (data) => axios.post(`${BASE_URL}/api/auth/agent-login`, data).then(r => r.data),
+  // 站点配置
+  getSiteConfig: (key) => http.get(`/api/auth/site-config/${key}`),
+  updateSiteConfig: (key, value) => http.put(`/api/auth/site-config/${key}`, { value }),
 }
 
 export const orderApi = {

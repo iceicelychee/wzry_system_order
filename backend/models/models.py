@@ -158,3 +158,12 @@ class BalanceLog(Base):
     created_at = Column(DateTime, default=datetime.now, index=True)
 
     agent = relationship("Agent", back_populates="balance_logs")
+
+
+class SiteConfig(Base):
+    __tablename__ = "site_config"
+
+    id = Column(Integer, primary_key=True, index=True)
+    config_key = Column(String(100), unique=True, nullable=False)
+    config_value = Column(Text, nullable=True)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)

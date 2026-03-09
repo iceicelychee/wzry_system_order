@@ -2,7 +2,8 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
-from models import get_db, Admin, Agent, AgentStatus
+from typing import Optional
+from models import get_db, Admin, Agent, AgentStatus, SiteConfig
 from services.auth import verify_password, get_password_hash, create_access_token, get_current_admin
 
 router = APIRouter(prefix="/api/auth", tags=["认证"])
@@ -71,3 +72,32 @@ def agent_login(req: AgentLoginRequest, db: Session = Depends(get_db)):
         "username": agent.username,
         "balance": agent.balance,
     }
+
+
+# ========== 站点配置（说明内容等） ==========
+
+@router.get("/site-config/{key}")
+def get_site_config(key: str, db: Session = Depends(get_db)):
+    config = db.query(SiteConfig).filter(SiteConfig.config_key == key).first()
+    return {"key": key, "value": config.config_value if config else ""}
+
+
+class SiteConfigUpdate(BaseModel):
+    value: str
+
+
+@router.put("/site-config/{key}")
+def update_site_config(
+    key: str,
+    req: SiteConfigUpdate,
+    current_admin: Admin = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    config = db.query(SiteConfig).filter(SiteConfig.config_key == key).first()
+    if config:
+        config.config_value = req.value
+    else:
+        config = SiteConfig(config_key=key, config_value=req.value)
+        db.add(config)
+    db.commit()
+    return {"message": "保存成功"}
