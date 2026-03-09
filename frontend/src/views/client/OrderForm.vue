@@ -46,7 +46,7 @@
             <div class="upload-section">
               <el-button icon="Upload" @click="triggerLocalUpload">本地上传</el-button>
               <input ref="fileInput" type="file" accept=".jpg,.jpeg,.png,.bmp,.gif,.webp"
-                style="display:none" @change="handleFileChange" />
+                style="display:none" @change="handleFileSelect" />
               <el-button icon="Picture" @click="showGallery = true" style="margin-left:8px">图库选图</el-button>
             </div>
             <div v-if="previewUrl" class="preview-box">
@@ -54,7 +54,7 @@
                 style="width:120px;height:120px;border-radius:8px;margin-top:10px" fit="cover" />
               <el-button type="danger" link size="small" @click="clearImage" style="margin-left:8px">移除</el-button>
             </div>
-            <div v-else class="upload-hint">支持 JPG / PNG / BMP，大小不超过 5MB</div>
+            <div v-else class="upload-hint">支持 JPG / PNG / BMP，大小不超过 5MB，建议16:9比例</div>
           </el-form-item>
 
           <el-button type="primary" size="large" :loading="submitting" @click="handleSubmit"
@@ -64,6 +64,41 @@
         </el-form>
       </div>
     </div>
+
+    <!-- 图片裁剪弹窗 -->
+    <el-dialog v-model="showCropper" title="裁剪图片 (16:9)" width="92%" style="max-width:800px" :close-on-click-modal="false">
+      <div class="cropper-container" v-if="cropperImage">
+        <vue-cropper
+          ref="cropperRef"
+          :img="cropperImage"
+          :output-size="1"
+          :output-type="cropperExt || 'jpeg'"
+          :info="true"
+          :full="true"
+          :can-move="true"
+          :can-move-box="true"
+          :fixed-box="false"
+          :fixed="true"
+          :fixed-number="[16, 9]"
+          :center-box="true"
+          :auto-crop="true"
+          :auto-crop-width="640"
+          :auto-crop-height="360"
+          :mode="'contain'"
+        />
+      </div>
+      <div class="cropper-toolbar">
+        <el-button @click="rotateLeft"><el-icon><RefreshLeft /></el-icon> 左转</el-button>
+        <el-button @click="rotateRight"><el-icon><RefreshRight /></el-icon> 右转</el-button>
+        <el-button @click="resetCropper"><el-icon><Refresh /></el-icon> 重置</el-button>
+        <el-button @click="zoomIn"><el-icon><ZoomIn /></el-icon> 放大</el-button>
+        <el-button @click="zoomOut"><el-icon><ZoomOut /></el-icon> 缩小</el-button>
+      </div>
+      <template #footer>
+        <el-button @click="cancelCrop">取消</el-button>
+        <el-button type="primary" @click="confirmCrop">确认裁剪</el-button>
+      </template>
+    </el-dialog>
 
     <!-- 图库选图弹窗 -->
     <el-dialog v-model="showGallery" title="图库选图" width="92%" style="max-width:700px">
@@ -97,6 +132,8 @@ import { ref, reactive, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { clientApi, galleryApi, getImageUrl } from '../../api'
+import 'vue-cropper/dist/index.css'
+import { VueCropper } from 'vue-cropper'
 
 const route = useRoute()
 const router = useRouter()
@@ -117,6 +154,13 @@ const rules = {
   system_type: [{ required: true, message: '请选择系统类型', trigger: 'change' }],
   image: [{ validator: (r, v, cb) => form.image ? cb() : cb(new Error('请上传图片')), trigger: 'change' }],
 }
+
+// 裁剪相关
+const showCropper = ref(false)
+const cropperImage = ref('')
+const cropperExt = ref('jpeg')
+const cropperRef = ref()
+const pendingFile = ref(null)
 
 const showGallery = ref(false)
 const galleryLoading = ref(false)
@@ -157,12 +201,53 @@ async function loadGallery() {
 
 function triggerLocalUpload() { fileInput.value.click() }
 
-function handleFileChange(e) {
+function handleFileSelect(e) {
   const file = e.target.files[0]
   if (!file) return
   if (file.size > 5 * 1024 * 1024) { ElMessage.error('图片不能超过5MB'); return }
-  form.image = file
-  previewUrl.value = URL.createObjectURL(file)
+
+  // 获取文件扩展名
+  const ext = file.name.split('.').pop().toLowerCase()
+  cropperExt.value = ext === 'png' ? 'png' : 'jpeg'
+  pendingFile.value = file
+
+  // 读取文件为 base64 用于裁剪
+  const reader = new FileReader()
+  reader.onload = (e) => {
+    cropperImage.value = e.target.result
+    showCropper.value = true
+  }
+  reader.readAsDataURL(file)
+}
+
+// 裁剪工具栏功能
+function rotateLeft() { cropperRef.value?.rotateLeft() }
+function rotateRight() { cropperRef.value?.rotateRight() }
+function resetCropper() { cropperRef.value?.refresh() }
+function zoomIn() { cropperRef.value?.changeScale(1) }
+function zoomOut() { cropperRef.value?.changeScale(-1) }
+
+function cancelCrop() {
+  showCropper.value = false
+  cropperImage.value = ''
+  pendingFile.value = null
+  if (fileInput.value) fileInput.value.value = ''
+}
+
+function confirmCrop() {
+  if (!cropperRef.value) return
+
+  cropperRef.value.getCropBlob((blob) => {
+    const fileName = pendingFile.value ? pendingFile.value.name : `cropped.${cropperExt.value}`
+    const croppedFile = new File([blob], fileName, { type: `image/${cropperExt.value}` })
+
+    form.image = croppedFile
+    previewUrl.value = URL.createObjectURL(blob)
+    showCropper.value = false
+    cropperImage.value = ''
+    pendingFile.value = null
+    ElMessage.success('裁剪完成')
+  })
 }
 
 function clearImage() {
@@ -257,5 +342,20 @@ function goStatus() { router.push(`/order/${token}/status`) }
 .check-mark {
   position: absolute; top: 4px; right: 4px;
   background: #409eff; color: #fff; border-radius: 50%; padding: 2px; font-size: 13px;
+}
+
+/* 裁剪器样式 */
+.cropper-container {
+  height: 400px;
+  background: #f5f7fa;
+  border-radius: 8px;
+  overflow: hidden;
+}
+.cropper-toolbar {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 16px;
+  flex-wrap: wrap;
 }
 </style>
