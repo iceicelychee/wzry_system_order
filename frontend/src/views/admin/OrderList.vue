@@ -222,11 +222,27 @@ function resetFilters() {
 }
 
 function copyLink(link) {
-  navigator.clipboard.writeText(link).then(() => {
-    ElMessage.success('链接已复制到剪贴板')
-  }).catch(() => {
-    ElMessage.error('复制失败，请手动复制')
-  })
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(link).then(() => {
+      ElMessage.success('链接已复制到剪贴板')
+    }).catch(() => {
+      fallbackCopy(link)
+    })
+  } else {
+    fallbackCopy(link)
+  }
+}
+
+function fallbackCopy(text) {
+  const el = document.createElement('textarea')
+  el.value = text
+  el.style.position = 'fixed'
+  el.style.opacity = '0'
+  document.body.appendChild(el)
+  el.select()
+  document.execCommand('copy')
+  document.body.removeChild(el)
+  ElMessage.success('链接已复制到剪贴板')
 }
 
 function openLink(link) {

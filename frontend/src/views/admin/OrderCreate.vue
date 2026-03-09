@@ -170,7 +170,19 @@ async function handleSubmit() {
 }
 
 function copyLink(link) {
-  navigator.clipboard.writeText(link).then(() => ElMessage.success('链接已复制'))
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(link).then(() => ElMessage.success('链接已复制'))
+  } else {
+    const el = document.createElement('textarea')
+    el.value = link
+    el.style.position = 'fixed'
+    el.style.opacity = '0'
+    document.body.appendChild(el)
+    el.select()
+    document.execCommand('copy')
+    document.body.removeChild(el)
+    ElMessage.success('链接已复制')
+  }
 }
 
 function createAnother() {
