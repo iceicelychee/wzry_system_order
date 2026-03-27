@@ -51,6 +51,11 @@ const routes = [
         name: 'Settings',
         component: () => import('../views/admin/Settings.vue'),
       },
+      {
+        path: 'api-doc',
+        name: 'ApiDoc',
+        component: () => import('../views/admin/ApiDoc.vue'),
+      },
     ],
   },
   // 代理路由

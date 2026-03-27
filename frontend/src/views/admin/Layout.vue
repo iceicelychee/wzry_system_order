@@ -24,6 +24,10 @@
           <el-icon><Setting /></el-icon>
           <span>站点设置</span>
         </el-menu-item>
+        <el-menu-item index="/admin/api-doc">
+          <el-icon><Document /></el-icon>
+          <span>脚本对接说明</span>
+        </el-menu-item>
       </el-menu>
     </el-aside>
     <el-container>
@@ -67,6 +71,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '../../stores/auth'
 import { authApi } from '../../api'
 import { ElMessage } from 'element-plus'
+import { List, Plus, Picture, User, Setting, Document } from '@element-plus/icons-vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -80,6 +85,7 @@ const pageTitle = computed(() => {
     '/admin/gallery': '图库管理',
     '/admin/agents': '代理管理',
     '/admin/settings': '站点设置',
+    '/admin/api-doc': '脚本对接说明',
   }
   if (route.path.startsWith('/admin/agents/') && route.path !== '/admin/agents') {
     return '代理详情'

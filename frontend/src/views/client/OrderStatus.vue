@@ -20,8 +20,10 @@
         <p class="state-text">正在分配设备，请准备好扫码授权我们上号修改</p>
         <p class="timeout-hint" v-if="timeoutCountdown > 0">
           <el-icon><Warning /></el-icon>
+                  <el-icon><Refresh /></el-icon>
           若 {{ timeoutCountdown }} 秒内无响应将自动返回重新提交
         </p>
+        <el-button style="margin-top:16px" @click="goBack">重新提交</el-button>
       </div>
 
       <!-- 二维码扫码 -->
@@ -38,6 +40,9 @@
         </div>
         <p v-if="countdown > 0" class="countdown">二维码有效期剩余 <strong>{{ countdown }}</strong> 秒</p>
         <p v-if="qrcodeStatus === '已过期'" class="expired-hint">二维码已过期，请等待系统重新生成...</p>
+        <el-button v-if="qrcodeStatus === '已过期'" type="primary" style="margin-top: 16px" @click="refreshQrcode">
+          <el-icon><Refresh /></el-icon> 刷新二维码
+        </el-button>
       </div>
 
       <!-- 执行中（无二维码） -->
@@ -72,6 +77,8 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { ElMessage } from 'element-plus'
+import { Refresh } from '@element-plus/icons-vue'
 import { clientApi, authApi, getImageUrl, getWsUrl } from '../../api'
 
 const route = useRoute()
@@ -206,6 +213,21 @@ function startPolling() {
       applyStatus(data)
     } catch { }
   }, 3000)
+}
+
+function goBack() {
+  if (timeoutTimer) clearInterval(timeoutTimer)
+  router.replace(`/order/${token}`)
+}
+
+// 刷新二维码 - 调用后端接口请求新二维码
+async function refreshQrcode() {
+  try {
+    await clientApi.refreshQrcode(token)
+    ElMessage.success('已请求刷新二维码，请稍候...')
+  } catch (err) {
+    ElMessage.error(err.message || '刷新失败')
+  }
 }
 
 onMounted(async () => {

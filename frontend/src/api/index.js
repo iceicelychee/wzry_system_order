@@ -118,6 +118,7 @@ export const clientApi = {
   getOrder: (token) => http.get(`/api/client/order/${token}`),
   submit: (token, formData) => http.post(`/api/client/order/${token}/submit`, formData),
   getStatus: (token) => http.get(`/api/client/order/${token}/status`),
+  refreshQrcode: (token) => http.post(`/api/client/order/${token}/refresh-qrcode`),
 }
 
 // 管理员管理代理的 API

@@ -1,0 +1,644 @@
+// ============================================================
+// 王者荣耀订单处理脚本 - 按键精灵手机助手 (.mqb)
+// 功能：对接订单管理系统API，自动处理王者荣耀登录授权
+// 所有接口使用表单提交，无需设置Header
+// 依赖：紫猫插件（zm.luae）用于图片下载
+// ============================================================
+
+Import "zm.luae"
+zm.Init
+
+// ==================== 配置 ====================
+Dim BASE_URL
+BASE_URL = "http://47.103.11.175"
+
+Dim ADMIN_USER
+ADMIN_USER = "admin"
+
+Dim ADMIN_PASS
+ADMIN_PASS = "admin123"
+
+Dim POLL_INTERVAL
+POLL_INTERVAL = 5
+
+Dim QR_EXPIRE_TIME
+QR_EXPIRE_TIME = 60
+
+Dim WAIT_CONFIRM_TIME
+WAIT_CONFIRM_TIME = 60
+
+// ==================== 全局变量 ====================
+Dim g_token
+g_token = ""
+
+Dim g_order_token
+g_order_token = ""
+
+Dim g_order_no
+g_order_no = ""
+
+Dim g_system_type
+g_system_type = ""
+
+Dim g_image_url
+g_image_url = ""
+
+Dim g_local_image
+g_local_image = ""
+
+// ==================== 主程序 ====================
+Call Main()
+
+Sub Main()
+    TracePrint "=========================================="
+    TracePrint "王者荣耀订单处理脚本启动"
+    TracePrint "服务器：" & BASE_URL
+    TracePrint "=========================================="
+
+    If LoginAndGetToken() = False Then
+        TracePrint "登录失败，脚本退出"
+        Exit Sub
+    End If
+
+    TracePrint "登录成功，Token: " & Left(g_token, 20) & "..."
+
+    Do
+        TracePrint "----------------------------------------"
+        TracePrint "轮询待执行订单..."
+
+        If GetPendingOrder() Then
+            TracePrint "获取到订单：" & g_order_no
+            TracePrint "系统类型：" & g_system_type
+
+            // 下载订单图片到手机
+            If g_image_url <> "" Then
+                If DownloadOrderImage() Then
+                    TracePrint "图片已下载：" & g_local_image
+                Else
+                    TracePrint "图片下载失败，继续执行"
+                End If
+            Else
+                TracePrint "该订单无图片"
+            End If
+
+            // 处理订单
+            If ProcessOrder() Then
+                TracePrint "订单处理成功：" & g_order_no
+            Else
+                TracePrint "订单处理失败：" & g_order_no
+            End If
+        Else
+            TracePrint "暂无待执行订单"
+        End If
+
+        Delay POLL_INTERVAL * 1000
+    Loop
+End Sub
+
+// ==================== JSON 解析辅助函数 ====================
+
+Function JsonGetStr(jsonStr, key)
+    Dim s, e, searchKey, ch
+    searchKey = Chr(34) & key & Chr(34)
+    s = InStr(1, jsonStr, searchKey)
+    If s = 0 Then
+        JsonGetStr = ""
+        Exit Function
+    End If
+    s = s + Len(searchKey)
+
+    // 跳过冒号和空格
+    Do While s <= Len(jsonStr)
+        ch = Mid(jsonStr, s, 1)
+        If ch <> ":" And ch <> " " Then Exit Do
+        s = s + 1
+    Loop
+
+    If s > Len(jsonStr) Then
+        JsonGetStr = ""
+        Exit Function
+    End If
+
+    ch = Mid(jsonStr, s, 1)
+
+    If ch = Chr(34) Then
+        // 字符串值
+        s = s + 1
+        e = InStr(s, jsonStr, Chr(34))
+        If e > s Then
+            JsonGetStr = Mid(jsonStr, s, e - s)
+        Else
+            JsonGetStr = ""
+        End If
+    Else
+        // 数字或布尔值
+        e = InStr(s, jsonStr, ",")
+        Dim e2
+        e2 = InStr(s, jsonStr, "}")
+        If e = 0 Or (e2 > 0 And e2 < e) Then
+            e = e2
+        End If
+        If e > s Then
+            JsonGetStr = Mid(jsonStr, s, e - s)
+        Else
+            JsonGetStr = ""
+        End If
+    End If
+End Function
+
+// ==================== API 调用 ====================
+
+// 登录获取 Token
+// POST /api/callback/script_login (表单提交)
+Function LoginAndGetToken()
+    Dim apiAddr, postData, resp, errMsg
+
+    apiAddr = BASE_URL & "/api/callback/script_login"
+    postData = "username=" & ADMIN_USER & "&password=" & ADMIN_PASS
+
+    TracePrint "正在登录：" & apiAddr
+
+    resp = Url.Post(apiAddr, postData)
+
+    TracePrint "登录响应：" & resp
+
+    If resp = "" Then
+        TracePrint "登录请求失败(空响应)"
+        LoginAndGetToken = False
+        Exit Function
+    End If
+
+    // 检查错误
+    errMsg = JsonGetStr(resp, "error")
+    If errMsg <> "" Then
+        TracePrint "登录失败：" & errMsg
+        LoginAndGetToken = False
+        Exit Function
+    End If
+
+    g_token = JsonGetStr(resp, "access_token")
+
+    If g_token <> "" Then
+        TracePrint "Token 获取成功"
+        LoginAndGetToken = True
+    Else
+        TracePrint "登录失败：" & resp
+        LoginAndGetToken = False
+    End If
+End Function
+
+// 获取待执行订单
+// GET /api/callback/script_orders?token=xxx
+Function GetPendingOrder()
+    Dim apiAddr, resp, totalStr, errMsg
+
+    apiAddr = BASE_URL & "/api/callback/script_orders?token=" & g_token
+
+    TracePrint "请求订单列表..."
+
+    resp = Url.Get(apiAddr)
+
+    If resp = "" Then
+        GetPendingOrder = False
+        Exit Function
+    End If
+
+    // 检查错误
+    errMsg = JsonGetStr(resp, "error")
+    If errMsg <> "" Then
+        TracePrint "获取订单失败：" & errMsg
+        GetPendingOrder = False
+        Exit Function
+    End If
+
+    totalStr = JsonGetStr(resp, "total")
+    If totalStr = "0" Or totalStr = "" Then
+        GetPendingOrder = False
+        Exit Function
+    End If
+
+    g_order_token = JsonGetStr(resp, "token")
+    g_order_no = JsonGetStr(resp, "order_no")
+    g_system_type = JsonGetStr(resp, "system_type")
+    g_image_url = JsonGetStr(resp, "image_url")
+
+    If g_order_token = "" Then
+        GetPendingOrder = False
+    Else
+        GetPendingOrder = True
+    End If
+End Function
+
+// 下载订单图片到手机相册
+// 使用紫猫插件 zm.HttpDownload
+Function DownloadOrderImage()
+    Dim imgUrl, savePath, ext
+
+    imgUrl = BASE_URL & g_image_url
+
+    // 从 URL 中提取文件扩展名
+    ext = ".png"
+    If InStr(1, g_image_url, ".jpg") > 0 Then
+        ext = ".jpg"
+    ElseIf InStr(1, g_image_url, ".jpeg") > 0 Then
+        ext = ".jpeg"
+    ElseIf InStr(1, g_image_url, ".bmp") > 0 Then
+        ext = ".bmp"
+    End If
+
+    savePath = "/sdcard/DCIM/order_" & g_order_no & ext
+
+    TracePrint "下载图片：" & imgUrl
+    TracePrint "保存到：" & savePath
+
+    zm.HttpDownload imgUrl, savePath
+
+    Delay 2000
+
+    If Dir.Exist(savePath) Then
+        g_local_image = savePath
+        TracePrint "图片下载成功"
+        DownloadOrderImage = True
+    Else
+        TracePrint "图片下载失败"
+        g_local_image = ""
+        DownloadOrderImage = False
+    End If
+End Function
+
+// 上传二维码文本
+// POST /api/callback/script_qrcode (表单提交，后端自动生成二维码图片)
+Function UploadQRCode(qrText)
+    Dim apiAddr, postData, resp
+
+    apiAddr = BASE_URL & "/api/callback/script_qrcode"
+    postData = "order_token=" & g_order_token & "&qrcode_text=" & qrText & "&expire_seconds=" & QR_EXPIRE_TIME
+
+    TracePrint "上传二维码文本..."
+
+    resp = Url.Post(apiAddr, postData)
+
+    If InStr(1, resp, "二维码已接收") > 0 Then
+        TracePrint "二维码上传成功"
+        UploadQRCode = True
+    Else
+        TracePrint "上传失败：" & resp
+        UploadQRCode = False
+    End If
+End Function
+
+// 更新扫码状态
+// POST /api/callback/script_status (表单提交)
+// statusVal: qrcode_scanned / qrcode_confirmed / qrcode_expired
+Function UpdateStatus(statusVal, msg)
+    Dim apiAddr, postData, resp
+
+    apiAddr = BASE_URL & "/api/callback/script_status"
+    postData = "order_token=" & g_order_token & "&status=" & statusVal & "&message=" & msg
+
+    resp = Url.Post(apiAddr, postData)
+
+    If InStr(1, resp, "状态已更新") > 0 Then
+        UpdateStatus = True
+    Else
+        TracePrint "状态更新失败：" & resp
+        UpdateStatus = False
+    End If
+End Function
+
+// 上报执行结果
+// POST /api/callback/script_result (表单提交)
+Function ReportResult(success, resultMsg, errMsg)
+    Dim apiAddr, postData, resp, successStr
+
+    apiAddr = BASE_URL & "/api/callback/script_result"
+
+    If success Then
+        successStr = "true"
+    Else
+        successStr = "false"
+    End If
+
+    postData = "order_token=" & g_order_token & "&success=" & successStr & "&result=" & resultMsg & "&error_msg=" & errMsg
+
+    resp = Url.Post(apiAddr, postData)
+
+    If InStr(1, resp, "结果已接收") > 0 Then
+        TracePrint "结果上报成功"
+        ReportResult = True
+    Else
+        TracePrint "结果上报失败：" & resp
+        ReportResult = False
+    End If
+End Function
+
+// ==================== 王者荣耀操作 ====================
+
+// 处理订单主流程
+Function ProcessOrder()
+    Dim qrcodePath, qrText, scanStatus
+    Dim waitCount, retryCount, maxRetry, scanned
+
+    ProcessOrder = False
+    maxRetry = 3
+    retryCount = 0
+    scanned = False
+
+    // 1. 根据系统类型执行点击，导航到登录二维码界面
+    TracePrint "根据系统类型导航到二维码界面..."
+    If NavigateToQRPage() = False Then
+        Call ReportResult(False, "", "导航到二维码页面失败")
+        Exit Function
+    End If
+
+    // 2. 获取二维码 -> 上传 -> 等待扫码（支持过期重试）
+    Do
+        retryCount = retryCount + 1
+
+        // 获取登录二维码截图
+        qrcodePath = GetLoginQRCode()
+        If qrcodePath = "" Then
+            Call ReportResult(False, "", "获取二维码失败")
+            Exit Function
+        End If
+
+        // 解码二维码并上传文本
+        qrText = Image.QrDecode(qrcodePath)
+        If qrText = "" Then
+            TracePrint "二维码解码失败"
+            Call ReportResult(False, "", "二维码解码失败")
+            Exit Function
+        End If
+
+        TracePrint "二维码内容：" & qrText
+
+        If UploadQRCode(qrText) = False Then
+            Call ReportResult(False, "", "上传二维码失败")
+            Exit Function
+        End If
+
+        // 等待客户扫码
+        TracePrint "等待客户扫码..."
+        waitCount = 0
+        scanned = False
+
+        Do
+            If waitCount >= QR_EXPIRE_TIME Then
+                TracePrint "60秒未扫码，刷新二维码..."
+                // 返回选区重新获取二维码
+                Call BackToSelectArea()
+                Exit Do
+            End If
+
+            scanStatus = CheckUserScanned()
+
+            If scanStatus = 1 Then
+                Call UpdateStatus("qrcode_scanned", "客户已扫码")
+                TracePrint "客户已扫码，等待确认..."
+
+                If WaitForConfirm() Then
+                    Call UpdateStatus("qrcode_confirmed", "客户已确认登录")
+                    TracePrint "客户已确认登录"
+                    scanned = True
+                    Exit Do
+                Else
+                    Call ReportResult(False, "", "等待确认超时")
+                    Exit Function
+                End If
+            End If
+
+            Delay 1000
+            waitCount = waitCount + 1
+        Loop
+
+        If scanned Then
+            Exit Do
+        End If
+
+        If retryCount >= maxRetry Then
+            TracePrint "已重试 " & maxRetry & " 次，放弃"
+            Call ReportResult(False, "", "二维码多次过期，放弃")
+            Exit Function
+        End If
+    Loop
+
+    // 3. 客户已确认登录，执行修改操作
+    TracePrint "开始执行修改操作..."
+    If ExecuteModify() Then
+        Call ReportResult(True, "修改完成", "")
+        ProcessOrder = True
+    Else
+        Call ReportResult(False, "", "修改操作失败")
+    End If
+
+    // 4. 返回主界面
+    //Call BackToHome()
+End Function
+
+// 根据系统类型点击，导航到登录二维码界面
+Function NavigateToQRPage()
+    TracePrint "导航到二维码页面，系统类型：" & g_system_type
+
+    If g_system_type = "安卓Q区" Then
+        Tap 153,1017
+        Delay 1000
+    ElseIf g_system_type = "苹果Q区" Then
+        Tap 153,757
+        Delay 1000
+    ElseIf g_system_type = "安卓V区" Then
+        Tap 156,489
+        Delay 1000
+        Tap 206,739
+        Delay 1000
+    ElseIf g_system_type = "苹果V区" Then
+        Tap 158,208
+        Delay 1000
+        Tap 206,739
+        Delay 1000
+    Else
+        TracePrint "未知系统类型，使用默认坐标"
+        Tap 1000, 100
+        Delay 1000
+        Tap 900, 1800
+        Delay 1000
+    End If
+
+    NavigateToQRPage = True
+End Function
+
+// 获取登录二维码截图
+Function GetLoginQRCode()
+    Dim savePath
+    savePath = "/sdcard/wzry_qrcode.png"
+
+    // 点击登录按钮 (坐标根据实际屏幕调整)
+    Tap 540, 1200
+    Delay 2000
+
+    // 截图二维码区域 (坐标根据实际屏幕调整)
+    SnapShot savePath, 0, 0, 0, 0
+    ShowMessage "已截图，请检查图片：" & savePath
+
+    If Dir.Exist(savePath) Then
+        GetLoginQRCode = savePath
+    Else
+        GetLoginQRCode = ""
+    End If
+End Function
+
+// 检测用户是否已扫码（通过颜色采样对比页面变化）
+Function CheckUserScanned()
+    Dim beforeColor1, beforeColor2, beforeColor3
+    Dim afterColor1, afterColor2, afterColor3
+    Dim changed
+
+    // 记录二维码页面几个关键点的颜色作为基准
+    // 坐标根据实际二维码页面调整
+    beforeColor1 = GetPixelColor(300, 500)
+    beforeColor2 = GetPixelColor(540, 700)
+    beforeColor3 = GetPixelColor(780, 500)
+
+    Delay 1000
+
+    // 再次获取当前页面相同位置的颜色
+    afterColor1 = GetPixelColor(300, 500)
+    afterColor2 = GetPixelColor(540, 700)
+    afterColor3 = GetPixelColor(780, 500)
+
+    // 如果任意一个点的颜色变化了，说明页面变化（用户已扫码）
+    changed = 0
+    If beforeColor1 <> afterColor1 Then
+        changed = 1
+    End If
+    If beforeColor2 <> afterColor2 Then
+        changed = 1
+    End If
+    If beforeColor3 <> afterColor3 Then
+        changed = 1
+    End If
+
+    If changed = 1 Then
+        CheckUserScanned = 1
+    Else
+        CheckUserScanned = 0
+    End If
+End Function
+
+// 等待用户确认登录（通过颜色采样持续检测页面变化）
+Function WaitForConfirm()
+    Dim confirmCount
+    Dim beforeColor1, beforeColor2, beforeColor3
+    Dim afterColor1, afterColor2, afterColor3
+    Dim changed
+
+    confirmCount = 0
+
+    // 记录扫码后页面的颜色基准
+    beforeColor1 = GetPixelColor(200, 300)
+    beforeColor2 = GetPixelColor(540, 960)
+    beforeColor3 = GetPixelColor(880, 300)
+
+    Do
+        If confirmCount >= WAIT_CONFIRM_TIME Then
+            WaitForConfirm = False
+            Exit Function
+        End If
+
+        Delay 1000
+
+        // 获取当前页面颜色
+        afterColor1 = GetPixelColor(200, 300)
+        afterColor2 = GetPixelColor(540, 960)
+        afterColor3 = GetPixelColor(880, 300)
+
+        // 检测是否有变化
+        changed = 0
+        If beforeColor1 <> afterColor1 Then
+            changed = 1
+        End If
+        If beforeColor2 <> afterColor2 Then
+            changed = 1
+        End If
+        If beforeColor3 <> afterColor3 Then
+            changed = 1
+        End If
+
+        If changed = 1 Then
+            WaitForConfirm = True
+            Exit Function
+        End If
+
+        confirmCount = confirmCount + 1
+    Loop
+End Function
+
+// 执行修改操作（根据系统类型执行不同点击）
+Function ExecuteModify()
+    TracePrint "执行修改，系统类型：" & g_system_type
+
+    If g_system_type = "安卓Q区" Then
+        Tap 150,785
+        Delay 1000
+    ElseIf g_system_type = "苹果Q区" Then
+        Tap 153,777
+        Delay 1000
+    ElseIf g_system_type = "安卓V区" Then
+        Tap 158,500
+        Delay 1000
+        Tap 208,765
+        Delay 1000
+    ElseIf g_system_type = "苹果V区" Then
+        Tap 149,217
+        Delay 1000
+        Tap 208,765
+        Delay 1000
+    Else
+        TracePrint "未知系统类型，使用默认坐标"
+        Tap 1000, 100
+        Delay 1000
+        Tap 900, 1800
+        Delay 1000
+    End If
+
+    ExecuteModify = True
+End Function
+
+// 返回选区（根据系统类型返回对应选区界面）
+Sub BackToSelectArea()
+    TracePrint "返回选区重新获取二维码..."
+    
+    If g_system_type = "安卓Q区" Then
+        KeyPress "Back"
+        Delay 1000
+    ElseIf g_system_type = "苹果Q区" Then
+        KeyPress "Back"
+        Delay 1000
+    ElseIf g_system_type = "安卓V区" Then
+        KeyPress "Back"
+        Delay 1000
+        KeyPress "Back"
+        Delay 1000
+    ElseIf g_system_type = "苹果V区" Then
+        KeyPress "Back"
+        Delay 1000
+        KeyPress "Back"
+        Delay 1000
+    Else
+        // 未知类型，多按几次返回
+        Dim i
+        For i = 1 To 3
+            KeyPress "Back"
+            Delay 500
+        Next
+    End If
+End Sub
+
+// 返回主界面
+Sub BackToHome()
+    Dim i
+    For i = 1 To 5
+        KeyPress "Back"
+        Delay 500
+   	Next
+    KeyPress "Home"
+End Sub

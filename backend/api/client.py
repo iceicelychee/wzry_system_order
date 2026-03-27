@@ -72,8 +72,8 @@ async def submit_order(
         raise HTTPException(status_code=404, detail="Order not found")
     if order.link_status in [LinkStatus.disabled, LinkStatus.expired]:
         raise HTTPException(status_code=403, detail="Link disabled/expired")
-    # 只有待执行状态才允许重新提交（执行中/成功/失败不允许）
-    if order.exec_status in [ExecStatus.running, ExecStatus.success, ExecStatus.failed]:
+    # 执行中不允许重新提交
+    if order.exec_status == ExecStatus.running:
         raise HTTPException(status_code=400, detail="Order already in execution")
 
     ext = os.path.splitext(image.filename)[1].lower() if image.filename else ""
@@ -96,7 +96,31 @@ async def submit_order(
     order.exec_status = ExecStatus.pending
     order.submitted_at = datetime.now()
 
-    db.add(ExecLog(order_id=order.id, log_content=f"Resubmitted: {system_type}"))
+    db.add(ExecLog(order_id=order.id, log_content=f"客户提交: {system_type}"))
     db.commit()
 
     return {"message": "Success", "order_no": order.order_no}
+
+
+@router.post("/order/{token}/refresh-qrcode")
+def refresh_qrcode(token: str, db: Session = Depends(get_db)):
+    """用户请求刷新二维码 - 将当前二维码状态设为过期，触发脚本重新生成"""
+    order = db.query(Order).filter(Order.token == token).first()
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    if order.exec_status != ExecStatus.running:
+        raise HTTPException(status_code=400, detail="Order not in execution")
+
+    # 查找最新的回调记录，将二维码状态设为过期
+    latest_cb = db.query(ScriptCallback).filter(
+        ScriptCallback.order_id == order.id
+    ).order_by(ScriptCallback.id.desc()).first()
+
+    if latest_cb and latest_cb.qrcode_status == "pending":
+        latest_cb.qrcode_status = "expired"
+        latest_cb.qrcode_expired_at = datetime.now()
+        db.add(ExecLog(order_id=order.id, log_content="用户手动刷新二维码"))
+        db.commit()
+        return {"message": "二维码已标记为过期，系统将重新生成"}
+
+    return {"message": "当前无可刷新的二维码"}
