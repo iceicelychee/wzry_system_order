@@ -1,6 +1,13 @@
 # 订单管理系统
 
 一个功能完善的订单管理平台，支持管理员、代理和客户三种角色，提供订单管理、图库管理、余额充值等功能。
+## 项目截图
+<img width="1874" height="922" alt="d1601f9e47042930812e0b76c5485e6f" src="https://github.com/user-attachments/assets/4ad621e5-8118-436d-a865-1cd5a9e60a8f" />
+<img width="1874" height="922" alt="1895cae679df7ca08e540a8a904ac406" src="https://github.com/user-attachments/assets/022b3736-dfb5-40d7-821b-a165a74d1ae8" />
+<img width="1874" height="922" alt="b8b4fbaec167398a110d4734f4845807" src="https://github.com/user-attachments/assets/41376adb-4ee3-4fe0-ba56-fbbe157c5b31" />
+<img width="1874" height="922" alt="b8b4fbaec167398a110d4734f4845807" src="https://github.com/user-attachments/assets/466ee160-7568-4c22-b1ba-19efe3abb9e8" />
+<img width="1874" height="922" alt="27591d4fb1cc20ef007f752052d1c08f" src="https://github.com/user-attachments/assets/59c343d2-a454-4560-9dc9-20dd840e6745" />
+<img width="1874" height="922" alt="2db1e2ce4bf2e93d79a716a179693b1e" src="https://github.com/user-attachments/assets/dad28477-44cd-4e0a-9bb4-4cdaa8d236e5" />
 
 ## 系统架构
 
